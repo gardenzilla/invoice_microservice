@@ -2,3 +2,7 @@
 Invocie microservice
 
 demo connection library to szamlazz.hu
+
+```bash
+make
+```
