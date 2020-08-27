@@ -1,0 +1,15 @@
+[package]
+authors = ["Peter <mezeipetister@gmail.com>"]
+edition = "2018"
+name = "invoice_microservice"
+version = "0.1.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chrono = {version = "0.4", features = ["serde"]}
+futures = "*"
+quick-xml = {version = "0.17", features = ["serialize"]}
+reqwest = "*"
+serde = {version = "1.0", features = ["derive"]}
+tokio = {version = "*", features = ["full"]}
