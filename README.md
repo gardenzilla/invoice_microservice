@@ -1,4 +1,4 @@
 # invoice_microservice
 Invocie microservice
 
-connection demo to szamlazz.hu
+demo connection library to szamlazz.hu
