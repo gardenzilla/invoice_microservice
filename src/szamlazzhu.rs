@@ -329,7 +329,7 @@ pub struct Item {
     #[serde(rename = "nettoEgysegar")]
     net_retail_price: f32,
     #[serde(rename = "afakulcs")]
-    vat_percentage: u32,
+    vat: String,
     #[serde(rename = "nettoErtek")]
     total_net_price: f32,
     #[serde(rename = "afaErtek")]
@@ -340,13 +340,37 @@ pub struct Item {
     comment: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub enum VAT {
+    AAM,
+    TAM,
+    FAD,
+    _0,
+    _5,
+    _27,
+}
+
+impl ToString for VAT {
+    fn to_string(&self) -> String {
+        use VAT::*;
+        match self {
+            AAM => "AAM".into(),
+            TAM => "TAM".into(),
+            FAD => "F.AFA".into(),
+            _0 => "0".into(),
+            _5 => "5".into(),
+            _27 => "27".into(),
+        }
+    }
+}
+
 impl Item {
     pub fn new(
         name: String,
         quantity: u32,
         unit: String,
         net_retail_price: f32,
-        vat_percentage: u32,
+        vat: VAT,
         total_net_price: f32,
         total_vat: f32,
         total_gross_price: f32,
@@ -357,7 +381,7 @@ impl Item {
             quantity,
             unit,
             net_retail_price,
-            vat_percentage,
+            vat: vat.to_string(),
             total_net_price,
             total_vat,
             total_gross_price,

@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
         1,
         "db".to_string(),
         100.0,
-        27,
+        szamlazzhu::VAT::_27,
         100.0,
         27.0,
         127.0,
@@ -48,10 +48,10 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
         1,
         "db".to_string(),
         100.0,
-        27,
+        szamlazzhu::VAT::FAD,
         100.0,
-        27.0,
-        127.0,
+        0.0,
+        100.0,
         None,
     );
     let invoice_request = InvoiceRequest::new(
