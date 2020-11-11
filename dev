@@ -1,0 +1,14 @@
+Request -> Invoice::new(..) -> Invoice plugin
+              / \                   |
+               |                    |
+               *--------------------*
+                    Invoice data back
+                    - ID
+                    - URL
+                    - PDF BLOB (Base64)
+
+Invoice
+  - internal_id
+  - external_id
+  - seller
+  - customer
