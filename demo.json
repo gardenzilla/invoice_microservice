@@ -1,0 +1,16 @@
+{
+  "date": "Wed, 11 Nov 2020 11:57:54 GMT",
+  "server": "Apache/2.4.38 (Debian)",
+  "set-cookie": "cookie_is_member=true; Max-Age=31536000; Expires=Thu, 11-Nov-2021 11:57:56 GMT; Path=/; Secure",
+  "cache-control": "no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0",
+  "pragma": "public",
+  "szlahu_kintlevoseg": "0",
+  "szlahu_vevoifiokurl": "https%3A%2F%2Fwww.szamlazz.hu%2Fszamla%2F%3Fpage%3Dvevoifiokpay%26partguid%3D68m6hxqay57tczze4cqay57tfe8watqay57t%26szfejguid%3D7rgnny3t6dtbi493q59fs2gc",
+  "szlahu_nettovegosszeg": "200",
+  "szlahu_szamlaszam": "GRDN-2020-28",
+  "szlahu_bruttovegosszeg": "227",
+  "content-disposition": "attachment; filename=364999_GRDN-2020-28_jd9ayfgcn4j23mtk2cgcn4j2.xml",
+  "content-type": "application/octet-stream",
+  "content-length": "19731",
+  "expires": "Wed, 11 Nov 2020 11:57:54 GMT"
+}

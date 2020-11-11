@@ -1,16 +1,37 @@
+use chrono::*;
+
 pub struct Invoice {
+    id: u32,
+    purchase_id: u32,
+    related_storno: Option<String>,
+    created_by: String,
+    created_at: DateTime<Utc>,
+    status: Status,
+}
+
+pub enum Status {
+    Err { error_msg: String },
+    Loading,
+    Done { invoice_id: String },
+}
+
+pub struct InvoiceData {
     internal_id: u32,
-    external_id: String,
+    external_id: Option<String>,
+    cart_id: u32,
     seller: Seller,
     customer: Customer,
     header: Header,
     items: Vec<Item>,
-    total_net: (),
-    total_gross: (),
+    total_net: f32,
+    total_gross: f32,
 }
 
 pub struct Seller {}
-pub struct Customer {}
+pub struct Customer {
+    name: String,
+    zip: String,
+}
 pub struct Header {}
 pub struct Item {
     name: String,

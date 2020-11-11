@@ -70,9 +70,11 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
         .form(&[("action-xmlagentxmlfile", r.as_str())])
         .send()
         .await?;
+    let headers = body.headers();
+    println!("{:?}", headers);
     let text = executor::block_on(body.text()).unwrap();
-    println!("Response is\n\n {}", &text);
+    // println!("Response is\n\n {}", &text);
     let response: SzamlazzHuResponse = from_str(text.trim()).unwrap();
-    println!("{:?}", response);
+    // println!("{:?}", response);
     Ok(())
 }

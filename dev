@@ -12,3 +12,8 @@ Invoice
   - external_id
   - seller
   - customer
+
+1. Receive Invoice data
+2. Validate and create an Invoice request -> Send back result
+3. In the background create invoice
+4. Save Invoice as PDF
