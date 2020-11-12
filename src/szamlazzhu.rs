@@ -3,6 +3,112 @@ use quick_xml::de::{from_str, DeError};
 use quick_xml::se::to_string;
 use serde::{Deserialize, Serialize};
 
+pub struct SzamlazzHu {
+    agent_key: String,
+}
+
+impl SzamlazzHu {
+    pub fn new() -> Self {
+        SzamlazzHu {
+            // Set szamlazz.hu agent key from ENV variable
+            agent_key: std::env::var("INVOICE_AGENT_KEY").expect("NO AGENT KEY ENV!"),
+        }
+    }
+}
+
+impl From<crate::invoice::VAT> for VAT {
+    fn from(v: crate::invoice::VAT) -> Self {
+        match v {
+            crate::invoice::VAT::AAM => VAT::AAM,
+            crate::invoice::VAT::FAD => VAT::FAD,
+            crate::invoice::VAT::TAM => VAT::TAM,
+            crate::invoice::VAT::_5 => VAT::_5,
+            crate::invoice::VAT::_18 => VAT::_18,
+            crate::invoice::VAT::_27 => VAT::_27,
+        }
+    }
+}
+
+impl crate::invoice::InvoiceAgent for SzamlazzHu {
+    fn create_invoice(
+        &self,
+        data: crate::invoice::InvoiceObject,
+    ) -> Result<crate::invoice::InvoiceSummary, crate::invoice::AgentError> {
+        // Create settings object
+        let settings = Settings::new(Some(self.agent_key.clone()));
+
+        // Create seller object
+        let seller = Seller::new();
+
+        // Create customer object
+        let customer = Customer::new(
+            data.customer.name,
+            data.customer.zip,
+            data.customer.location,
+            data.customer.street,
+            if data.customer.tax_number.len() > 0 {
+                Some(data.customer.tax_number)
+            } else {
+                None
+            },
+        );
+        let waybill = Waybill::new();
+        let header = Header::new(
+            Utc::today().naive_local(),
+            Utc::today().naive_local(),
+            Utc::today().naive_local(),
+            PaymentMethod::Cash,
+            None,
+            "GRDN".to_string(),
+        );
+        let item_a = Item::new(
+            "DemoA".to_string(),
+            1,
+            "db".to_string(),
+            100.0,
+            szamlazzhu::VAT::_27,
+            100.0,
+            27.0,
+            127.0,
+            None,
+        );
+        let item_b = Item::new(
+            "DemoB".to_string(),
+            1,
+            "db".to_string(),
+            100.0,
+            szamlazzhu::VAT::FAD,
+            100.0,
+            0.0,
+            100.0,
+            None,
+        );
+        let invoice_request = InvoiceRequest::new(
+            settings,
+            header,
+            seller,
+            customer,
+            waybill,
+            vec![item_a, item_b],
+        );
+        let r = invoice_request.unwrap();
+        let client = reqwest::Client::new();
+        // println!("Query is\n\n {}", &r);
+        let body = client
+            .post("https://www.szamlazz.hu/szamla/")
+            .form(&[("action-xmlagentxmlfile", r.as_str())])
+            .send()
+            .await?;
+        let headers = body.headers();
+        println!("{:?}", headers);
+        let text = executor::block_on(body.text()).unwrap();
+        // println!("Response is\n\n {}", &text);
+        let response: SzamlazzHuResponse = from_str(text.trim()).unwrap();
+        // println!("{:?}", response);
+        Ok(())
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename = "xmlszamlavalasz")]
 pub struct SzamlazzHuResponse {
@@ -347,6 +453,7 @@ pub enum VAT {
     FAD,
     _0,
     _5,
+    _18,
     _27,
 }
 
@@ -359,6 +466,7 @@ impl ToString for VAT {
             FAD => "F.AFA".into(),
             _0 => "0".into(),
             _5 => "5".into(),
+            _18 => "18".into(),
             _27 => "27".into(),
         }
     }

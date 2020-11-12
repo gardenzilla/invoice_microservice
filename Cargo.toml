@@ -9,6 +9,7 @@ version = "0.1.0"
 [dependencies]
 chrono = {version = "0.4", features = ["serde"]}
 futures = "*"
+packman = "*"
 quick-xml = {version = "0.17", features = ["serialize"]}
 reqwest = "*"
 serde = {version = "1.0", features = ["derive"]}

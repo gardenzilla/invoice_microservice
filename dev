@@ -1,6 +1,6 @@
 Request -> Invoice::new(..) -> Invoice plugin
-              / \                   |
-               |                    |
+              / \     \             |
+               |        ------------|-----------> Save Base64 to PDF file
                *--------------------*
                     Invoice data back
                     - ID
@@ -17,3 +17,8 @@ Invoice
 2. Validate and create an Invoice request -> Send back result
 3. In the background create invoice
 4. Save Invoice as PDF
+
+Create Invoice by Purchase ID
+1. Is there any valid invoice for the given ID?
+2. If no, then start to validate then create a new one
+3. If yes, then return Err(Already exist)
