@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use packman::VecPackMember;
 use serde::{Deserialize, Serialize};
 use std::ops::Mul;
@@ -65,6 +65,35 @@ pub struct InvoiceObject {
     pub created_by: String,
 }
 
+impl InvoiceObject {
+    pub fn new(
+        internal_id: u32,
+        cart_id: u32,
+        seller: Seller,
+        customer: Customer,
+        header: Header,
+        items: Vec<Item>,
+        total_net: i32,
+        total_gross: i32,
+        created_at: DateTime<Utc>,
+        created_by: String,
+    ) -> Self {
+        InvoiceObject {
+            internal_id,
+            external_id: None,
+            cart_id,
+            seller,
+            customer,
+            header,
+            items,
+            total_net,
+            total_gross,
+            created_at,
+            created_by,
+        }
+    }
+}
+
 impl Default for InvoiceObject {
     fn default() -> Self {
         InvoiceObject {
@@ -105,6 +134,12 @@ impl VecPackMember for InvoiceObject {
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Seller {}
 
+impl Seller {
+    pub fn new() -> Self {
+        Seller {}
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Customer {
     pub name: String,
@@ -112,6 +147,24 @@ pub struct Customer {
     pub zip: String,
     pub location: String,
     pub street: String,
+}
+
+impl Customer {
+    pub fn new(
+        name: String,
+        tax_number: String,
+        zip: String,
+        location: String,
+        street: String,
+    ) -> Self {
+        Customer {
+            name,
+            tax_number,
+            zip,
+            location,
+            street,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -135,6 +188,22 @@ pub struct Header {
     pub payment_method: PaymentMethod,
 }
 
+impl Header {
+    pub fn new(
+        date_created: NaiveDate,
+        date_completion: NaiveDate,
+        payment_duedate: NaiveDate,
+        payment_method: PaymentMethod,
+    ) -> Self {
+        Header {
+            date_created: date_created.to_string(),
+            date_completion: date_completion.to_string(),
+            payment_duedate: payment_duedate.to_string(),
+            payment_method: payment_method,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Item {
     pub name: String,
@@ -145,6 +214,56 @@ pub struct Item {
     pub total_price_net: i32,
     pub total_price_vat: i32,
     pub total_price_gross: i32,
+}
+
+#[derive(Debug)]
+pub enum ItemError {
+    TotalUnitNetError,
+    TotalUnitGrossError,
+}
+
+impl ToString for ItemError {
+    fn to_string(&self) -> String {
+        match self {
+            ItemError::TotalUnitNetError => "Nem megfelelő az adott tétel totál nettó ára!".into(),
+            ItemError::TotalUnitGrossError => {
+                "Nem megfelelő az adott tétel totál bruttó ára!".into()
+            }
+        }
+    }
+}
+
+impl Item {
+    pub fn new(
+        name: String,
+        quantity: u32,
+        unit: String,
+        retail_price_net: i32,
+        vat: VAT,
+        total_price_net: i32,
+        total_price_vat: i32,
+        total_price_gross: i32,
+    ) -> Result<Self, ItemError> {
+        if (quantity as i32 * retail_price_net) != total_price_net {
+            return Err(ItemError::TotalUnitNetError);
+        }
+        if (quantity as i32 * retail_price_net * vat.clone()) != total_price_gross {
+            return Err(ItemError::TotalUnitGrossError);
+        }
+        if (total_price_net + total_price_vat) != total_price_gross {
+            return Err(ItemError::TotalUnitGrossError);
+        }
+        Ok(Self {
+            name,
+            quantity,
+            unit,
+            retail_price_net,
+            vat,
+            total_price_net,
+            total_price_vat,
+            total_price_gross,
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

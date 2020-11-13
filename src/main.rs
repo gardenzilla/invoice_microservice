@@ -5,6 +5,7 @@ mod invoice;
 mod szamlazzhu;
 
 use crate::invoice::InvoiceAgent;
+use chrono::NaiveDate;
 use packman::*;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -70,30 +71,31 @@ async fn main() {
         internal_id: 1,
         external_id: None,
         cart_id: 1,
-        seller: invoice::Seller {},
-        customer: invoice::Customer {
-            name: "Demo Elek".into(),
-            tax_number: "".into(),
-            zip: "4551".into(),
-            location: "Nyíregyháza".into(),
-            street: "Mogyorós utca 36.".into(),
-        },
-        header: invoice::Header {
-            date_created: "2020-11-13".into(),
-            date_completion: "2020-11-13".into(),
-            payment_duedate: "2020-11-13".into(),
-            payment_method: invoice::PaymentMethod::Cash,
-        },
-        items: vec![invoice::Item {
-            name: "Demo product".into(),
-            quantity: 1,
-            unit: "db".into(),
-            retail_price_net: 100,
-            vat: invoice::VAT::_27,
-            total_price_net: 100,
-            total_price_vat: 27,
-            total_price_gross: 127,
-        }],
+        seller: invoice::Seller::new(),
+        customer: invoice::Customer::new(
+            "Demo Elek".into(),
+            "".into(),
+            "4551".into(),
+            "Nyíregyháza".into(),
+            "Mogyorós utca 36.".into(),
+        ),
+        header: invoice::Header::new(
+            NaiveDate::from_ymd(2020, 11, 13),
+            NaiveDate::from_ymd(2020, 11, 13),
+            NaiveDate::from_ymd(2020, 11, 13),
+            invoice::PaymentMethod::Transfer,
+        ),
+        items: vec![invoice::Item::new(
+            "Demo item".into(),
+            1,
+            "db".into(),
+            100,
+            invoice::VAT::_27,
+            100,
+            27,
+            127,
+        )
+        .unwrap()],
         total_net: 100,
         total_gross: 127,
         created_at: chrono::Utc::now(),
