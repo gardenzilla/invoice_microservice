@@ -7,11 +7,14 @@ pub trait InvoiceAgent {
     fn create_invoice(&self, data: InvoiceObject) -> Result<InvoiceSummary, AgentError>;
 }
 
+#[derive(Debug)]
 pub enum AgentError {
     DataError(String),
     ServiceError,
+    InternalError(String),
 }
 
+#[derive(Debug)]
 pub struct InvoiceSummary {
     pub invoice_id: String,
     pub pdf_base64: String,
@@ -56,8 +59,8 @@ pub struct InvoiceObject {
     pub customer: Customer,
     pub header: Header,
     pub items: Vec<Item>,
-    pub total_net: f32,
-    pub total_gross: f32,
+    pub total_net: i32,
+    pub total_gross: i32,
     pub created_at: DateTime<Utc>,
     pub created_by: String,
 }
@@ -72,8 +75,8 @@ impl Default for InvoiceObject {
             customer: Customer::default(),
             header: Header::default(),
             items: Vec::new(),
-            total_net: 0.0,
-            total_gross: 0.0,
+            total_net: 0,
+            total_gross: 0,
             created_at: Utc::now(),
             created_by: "".into(),
         }
@@ -111,12 +114,32 @@ pub struct Customer {
     pub street: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum PaymentMethod {
+    Cash,
+    Transfer,
+    Card,
+}
+
+impl Default for PaymentMethod {
+    fn default() -> Self {
+        PaymentMethod::Cash
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
-pub struct Header {}
+pub struct Header {
+    pub date_created: String,
+    pub date_completion: String,
+    pub payment_duedate: String,
+    pub payment_method: PaymentMethod,
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Item {
     pub name: String,
+    pub quantity: u32,
+    pub unit: String,
     pub retail_price_net: i32,
     pub vat: VAT,
     pub total_price_net: i32,

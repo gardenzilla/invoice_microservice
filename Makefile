@@ -2,7 +2,7 @@
 include .env
 export $(shell sed 's/=.*//' .env)
 
-.PHONY: build
+.PHONY: run
 
-build:
+run:
 	cargo run

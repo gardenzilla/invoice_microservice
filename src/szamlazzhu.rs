@@ -1,17 +1,31 @@
-use chrono::prelude::*;
+// use chrono::prelude::*;
+use futures::executor;
 use quick_xml::de::{from_str, DeError};
 use quick_xml::se::to_string;
 use serde::{Deserialize, Serialize};
 
 pub struct SzamlazzHu {
     agent_key: String,
+    invoice_prefix: String,
+    bank_name: String,
+    bank_account: String,
 }
 
 impl SzamlazzHu {
     pub fn new() -> Self {
         SzamlazzHu {
             // Set szamlazz.hu agent key from ENV variable
-            agent_key: std::env::var("INVOICE_AGENT_KEY").expect("NO AGENT KEY ENV!"),
+            agent_key: std::env::var("INVOICE_AGENT_KEY")
+                .expect("Cannot create SzamlazzHu Agent. NO AGENT KEY ENV!"),
+            // Set szamlazz.hu agent key from ENV variable
+            invoice_prefix: std::env::var("INVOICE_PREFIX")
+                .expect("Cannot create SzamlazzHu Agent. NO INVOICE_PREFIX ENV!"),
+            // Set szamlazz.hu agent key from ENV variable
+            bank_name: std::env::var("INVOICE_BANK_NAME")
+                .expect("Cannot create SzamlazzHu Agent. NO INVOICE_BANK_NAME ENV!"),
+            // Set szamlazz.hu agent key from ENV variable
+            bank_account: std::env::var("INVOICE_BANK_ACCOUNT")
+                .expect("Cannot create SzamlazzHu Agent. NO INVOICE_BANK_ACCOUNT ENV!"),
         }
     }
 }
@@ -29,6 +43,16 @@ impl From<crate::invoice::VAT> for VAT {
     }
 }
 
+impl From<crate::invoice::PaymentMethod> for PaymentMethod {
+    fn from(m: crate::invoice::PaymentMethod) -> Self {
+        match m {
+            crate::invoice::PaymentMethod::Cash => PaymentMethod::Cash,
+            crate::invoice::PaymentMethod::Transfer => PaymentMethod::Transfer,
+            crate::invoice::PaymentMethod::Card => PaymentMethod::CreditCar,
+        }
+    }
+}
+
 impl crate::invoice::InvoiceAgent for SzamlazzHu {
     fn create_invoice(
         &self,
@@ -38,7 +62,7 @@ impl crate::invoice::InvoiceAgent for SzamlazzHu {
         let settings = Settings::new(Some(self.agent_key.clone()));
 
         // Create seller object
-        let seller = Seller::new();
+        let seller = Seller::new(self.bank_name.clone(), self.bank_account.clone());
 
         // Create customer object
         let customer = Customer::new(
@@ -54,58 +78,53 @@ impl crate::invoice::InvoiceAgent for SzamlazzHu {
         );
         let waybill = Waybill::new();
         let header = Header::new(
-            Utc::today().naive_local(),
-            Utc::today().naive_local(),
-            Utc::today().naive_local(),
+            data.header.date_created,
+            data.header.date_completion,
+            data.header.payment_duedate,
             PaymentMethod::Cash,
             None,
-            "GRDN".to_string(),
+            self.invoice_prefix.clone(),
         );
-        let item_a = Item::new(
-            "DemoA".to_string(),
-            1,
-            "db".to_string(),
-            100.0,
-            szamlazzhu::VAT::_27,
-            100.0,
-            27.0,
-            127.0,
-            None,
-        );
-        let item_b = Item::new(
-            "DemoB".to_string(),
-            1,
-            "db".to_string(),
-            100.0,
-            szamlazzhu::VAT::FAD,
-            100.0,
-            0.0,
-            100.0,
-            None,
-        );
-        let invoice_request = InvoiceRequest::new(
-            settings,
-            header,
-            seller,
-            customer,
-            waybill,
-            vec![item_a, item_b],
-        );
+
+        // Create item(s) vector
+        let items = data
+            .items
+            .iter()
+            .map(|i| {
+                Item::new(
+                    i.name.to_string(),
+                    i.quantity,
+                    i.unit.to_string(),
+                    i.retail_price_net,
+                    i.vat.clone().into(),
+                    i.total_price_net,
+                    i.total_price_vat,
+                    i.total_price_gross,
+                    None,
+                )
+            })
+            .collect::<Vec<Item>>();
+
+        let invoice_request =
+            InvoiceRequest::new(settings, header, seller, customer, waybill, items);
         let r = invoice_request.unwrap();
         let client = reqwest::Client::new();
-        // println!("Query is\n\n {}", &r);
+
         let body = client
             .post("https://www.szamlazz.hu/szamla/")
             .form(&[("action-xmlagentxmlfile", r.as_str())])
-            .send()
-            .await?;
-        let headers = body.headers();
-        println!("{:?}", headers);
-        let text = executor::block_on(body.text()).unwrap();
-        // println!("Response is\n\n {}", &text);
-        let response: SzamlazzHuResponse = from_str(text.trim()).unwrap();
-        // println!("{:?}", response);
-        Ok(())
+            .send();
+
+        let response = executor::block_on(body)
+            .map_err(|e| crate::invoice::AgentError::DataError(e.to_string()))?;
+
+        let text = executor::block_on(response.text())
+            .map_err(|e| crate::invoice::AgentError::DataError(e.to_string()))?;
+
+        let response: SzamlazzHuResponse = from_str(text.trim())
+            .map_err(|e| crate::invoice::AgentError::InternalError(e.to_string()))?;
+
+        Ok(response.into())
     }
 }
 
@@ -128,6 +147,15 @@ pub struct SzamlazzHuResponse {
     #[serde(rename = "pdf")]
     pdf_blob_base64: String,
 }
+
+impl From<SzamlazzHuResponse> for crate::invoice::InvoiceSummary {
+    fn from(r: SzamlazzHuResponse) -> Self {
+        crate::invoice::InvoiceSummary {
+            invoice_id: r.invoice_id,
+            pdf_base64: r.pdf_blob_base64,
+        }
+    }
+}
 pub struct InvoiceRequest {}
 
 impl InvoiceRequest {
@@ -136,7 +164,7 @@ impl InvoiceRequest {
         header: Header,
         seller: Seller,
         customer: Customer,
-        waybill: Waybill,
+        _waybill: Waybill,
         items: Vec<Item>,
     ) -> Result<String, DeError> {
         let s = serialize(&settings)?;
@@ -166,6 +194,8 @@ pub struct Settings {
     is_einvoice: bool,
     #[serde(rename = "szamlaLetoltes")]
     should_download_pdf: bool,
+    #[serde(rename = "szamlaLetoltesPld")]
+    copy_of_pdf_pages: u32,
     #[serde(rename = "valaszVerzio")]
     response_version: u32,
     #[serde(rename = "aggregator")]
@@ -180,6 +210,7 @@ impl Settings {
             agent_key,
             is_einvoice: false,
             should_download_pdf: true,
+            copy_of_pdf_pages: 1,
             response_version: 2,
             agregator: None,
         }
@@ -189,12 +220,12 @@ impl Settings {
 #[derive(Debug, Serialize)]
 #[serde(rename = "fejlec")]
 pub struct Header {
-    #[serde(rename = "keltDatum", with = "date_format")]
-    date_created: NaiveDate,
-    #[serde(rename = "teljesitesDatum", with = "date_format")]
-    completion_date: NaiveDate,
-    #[serde(rename = "fizetesiHataridoDatum", with = "date_format")]
-    payment_duedate: NaiveDate,
+    #[serde(rename = "keltDatum")]
+    date_created: String,
+    #[serde(rename = "teljesitesDatum")]
+    completion_date: String,
+    #[serde(rename = "fizetesiHataridoDatum")]
+    payment_duedate: String,
     #[serde(rename = "fizmod")]
     payment_method: String,
     #[serde(rename = "penznem")]
@@ -225,27 +256,27 @@ pub struct Header {
     invoice_prefix: String,
 }
 
-mod date_format {
-    use chrono::NaiveDate;
-    use serde::{self, Serializer};
+// mod date_format {
+//     use chrono::NaiveDate;
+//     use serde::{self, Serializer};
 
-    const FORMAT: &'static str = "%Y-%m-%d";
+//     const FORMAT: &'static str = "%Y-%m-%d";
 
-    // The signature of a serialize_with function must follow the pattern:
-    //
-    //    fn serialize<S>(&T, S) -> Result<S::Ok, S::Error>
-    //    where
-    //        S: Serializer
-    //
-    // although it may also be generic over the input types T.
-    pub fn serialize<S>(date: &NaiveDate, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let s = format!("{}", date.format(FORMAT));
-        serializer.serialize_str(&s)
-    }
-}
+//     // The signature of a serialize_with function must follow the pattern:
+//     //
+//     //    fn serialize<S>(&T, S) -> Result<S::Ok, S::Error>
+//     //    where
+//     //        S: Serializer
+//     //
+//     // although it may also be generic over the input types T.
+//     pub fn serialize<S>(date: &NaiveDate, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: Serializer,
+//     {
+//         let s = format!("{}", date.format(FORMAT));
+//         serializer.serialize_str(&s)
+//     }
+// }
 
 pub enum PaymentMethod {
     Cash,
@@ -289,9 +320,9 @@ impl Language {
 
 impl Header {
     pub fn new(
-        date_created: NaiveDate,
-        completion_date: NaiveDate,
-        payment_duedate: NaiveDate,
+        date_created: String,
+        completion_date: String,
+        payment_duedate: String,
         payment_method: PaymentMethod,
         comment: Option<String>,
         invoice_prefix: String,
@@ -334,10 +365,10 @@ pub struct Seller {
 }
 
 impl Seller {
-    pub fn new() -> Self {
+    pub fn new(bank: String, bank_account: String) -> Self {
         Seller {
-            bank: "K&H Bank".to_string(),
-            bank_account: "10404436-50526580-66701009".to_string(),
+            bank,
+            bank_account,
             email_reply_to: None,
             email_subject: None,
             email_body: None,
@@ -433,15 +464,15 @@ pub struct Item {
     #[serde(rename = "mennyisegiEgyseg")]
     unit: String,
     #[serde(rename = "nettoEgysegar")]
-    net_retail_price: f32,
+    net_retail_price: i32,
     #[serde(rename = "afakulcs")]
     vat: String,
     #[serde(rename = "nettoErtek")]
-    total_net_price: f32,
+    total_net_price: i32,
     #[serde(rename = "afaErtek")]
-    total_vat: f32,
+    total_vat: i32,
     #[serde(rename = "bruttoErtek")]
-    total_gross_price: f32,
+    total_gross_price: i32,
     #[serde(rename = "megjegyzes")]
     comment: Option<String>,
 }
@@ -477,11 +508,11 @@ impl Item {
         name: String,
         quantity: u32,
         unit: String,
-        net_retail_price: f32,
+        net_retail_price: i32,
         vat: VAT,
-        total_net_price: f32,
-        total_vat: f32,
-        total_gross_price: f32,
+        total_net_price: i32,
+        total_vat: i32,
+        total_gross_price: i32,
         comment: Option<String>,
     ) -> Self {
         Item {
