@@ -1,3 +1,6 @@
+extern crate base64;
+
+mod file;
 mod invoice;
 mod szamlazzhu;
 
@@ -98,7 +101,13 @@ async fn main() {
     };
     let agent = szamlazzhu::SzamlazzHu::new();
     let res = agent.create_invoice(invoice_object);
-    println!("Result is {:?}", res);
+    let _res = &res.unwrap();
+    let bytes = file::base64_decode(&_res.pdf_base64.replace("\n", "")).unwrap();
+    file::save_file(
+        bytes,
+        std::path::PathBuf::from(format!("pdf/{}.pdf", _res.invoice_id)),
+    )
+    .unwrap();
 }
 
 // fn main() {
