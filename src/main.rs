@@ -374,8 +374,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             invoice_object_store_clone,
             invoice_store_clone,
         );
-    })
-    .await?;
+    });
 
     // Send unprocessed invoice objects to processor
     match invoice_object_store.lock() {
