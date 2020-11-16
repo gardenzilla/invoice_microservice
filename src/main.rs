@@ -93,6 +93,7 @@ where
                 }
             }
         }
+        error!("Background process closed!");
     }
 }
 
@@ -125,7 +126,7 @@ impl invoice_server::Invoice for InvoiceService {
         let r = request.into_inner();
         let next_id = match self.invoice_store.lock() {
             Ok(invoices) => match invoices.last() {
-                Some(last) => last.unpack().id,
+                Some(last) => last.unpack().id + 1,
                 None => 1,
             },
             Err(_) => panic!("Error while locking invoices"),
@@ -218,8 +219,11 @@ impl invoice_server::Invoice for InvoiceService {
         // Save invoice object to invoice_object_store
         match self.invoice_object_store.lock() {
             Ok(mut iobject_store) => {
-                iobject_store.insert(invoice_object.clone()).map_err(|_| {
-                    Status::internal("Error inserting new invoice object to iobject storage")
+                iobject_store.insert(invoice_object.clone()).map_err(|e| {
+                    Status::internal(format!(
+                        "Error inserting new invoice object to iobject storage {}",
+                        e
+                    ))
                 })?;
             }
             Err(_) => return Err(Status::internal("Error while locking object_store")),
@@ -336,6 +340,8 @@ impl invoice_server::Invoice for InvoiceService {
 async fn main() -> Result<(), Box<dyn Error>> {
     pretty_env_logger::init();
 
+    info!("Server started!");
+
     // Create pdf folder path if not exist
     std::fs::create_dir_all(format!("data/{}", PDF_FOLDER_NAME))
         .expect("Error while creating PDF folder path");
@@ -361,14 +367,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let invoice_store_clone = invoice_store.clone();
 
     // Parallel thread for invoice processor
-    std::thread::spawn(move || {
+    tokio::task::spawn_blocking(move || {
         // Start invoice processor
         InvoiceProcessor::new(agent).start(
             new_invoice_rx,
             invoice_object_store_clone,
             invoice_store_clone,
-        )
-    });
+        );
+    })
+    .await?;
 
     // Send unprocessed invoice objects to processor
     match invoice_object_store.lock() {
