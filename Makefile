@@ -1,8 +1,16 @@
-#!make
-include .env
-export $(shell sed 's/=.*//' .env)
 
-.PHONY: run
+.PHONY: release, test, dev
 
-run:
-	cargo run
+release:
+	cargo build --release
+	strip target/release/invoice_microservice
+
+build:
+	cargo build
+
+dev:
+	# . ./ENV.sh; backper
+	cargo run;
+
+test:
+	cargo test

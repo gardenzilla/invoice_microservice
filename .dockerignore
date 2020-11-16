@@ -1,0 +1,7 @@
+
+data/
+target/
+src/
+!target/release/invoice_microservice
+Cargo.lock
+.git/
