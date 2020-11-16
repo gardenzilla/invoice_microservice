@@ -10,7 +10,7 @@ pub trait InvoiceAgent {
 #[derive(Debug)]
 pub enum AgentError {
     DataError(String),
-    ServiceError,
+    // ServiceError,
     InternalError(String),
 }
 
@@ -25,9 +25,9 @@ pub struct Invoice {
     pub id: u32,
     pub purchase_id: u32,
     pub invoice_id: Option<String>,
-    related_storno: Option<String>,
-    created_by: String,
-    created_at: DateTime<Utc>,
+    pub related_storno: Option<String>,
+    pub created_by: String,
+    pub created_at: DateTime<Utc>,
     // status: Status,
 }
 
@@ -63,6 +63,7 @@ pub struct InvoiceObject {
     pub items: Vec<Item>,
     pub total_net: i32,
     pub total_gross: i32,
+    pub total_vat: i32,
     pub created_at: DateTime<Utc>,
     pub created_by: String,
 }
@@ -77,6 +78,7 @@ impl InvoiceObject {
         items: Vec<Item>,
         total_net: i32,
         total_gross: i32,
+        total_vat: i32,
         created_at: DateTime<Utc>,
         created_by: String,
     ) -> Self {
@@ -90,6 +92,7 @@ impl InvoiceObject {
             items,
             total_net,
             total_gross,
+            total_vat,
             created_at,
             created_by,
         }
@@ -108,6 +111,7 @@ impl Default for InvoiceObject {
             items: Vec::new(),
             total_net: 0,
             total_gross: 0,
+            total_vat: 0,
             created_at: Utc::now(),
             created_by: "".into(),
         }
@@ -210,7 +214,7 @@ impl Header {
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Item {
     pub name: String,
-    pub quantity: u32,
+    pub quantity: i32,
     pub unit: String,
     pub retail_price_net: i32,
     pub vat: VAT,
@@ -239,7 +243,7 @@ impl ToString for ItemError {
 impl Item {
     pub fn new(
         name: String,
-        quantity: u32,
+        quantity: i32,
         unit: String,
         retail_price_net: i32,
         vat: VAT,
@@ -247,10 +251,10 @@ impl Item {
         total_price_vat: i32,
         total_price_gross: i32,
     ) -> Result<Self, ItemError> {
-        if (quantity as i32 * retail_price_net) != total_price_net {
+        if (quantity * retail_price_net) != total_price_net {
             return Err(ItemError::TotalUnitNetError);
         }
-        if (quantity as i32 * retail_price_net * vat.clone()) != total_price_gross {
+        if (quantity * retail_price_net * vat.clone()) != total_price_gross {
             return Err(ItemError::TotalUnitGrossError);
         }
         if (total_price_net + total_price_vat) != total_price_gross {
@@ -282,6 +286,23 @@ pub enum VAT {
 impl Default for VAT {
     fn default() -> Self {
         VAT::_27
+    }
+}
+
+impl VAT {
+    pub fn from_str(str: &str) -> Result<VAT, String> {
+        match str {
+            "AAM" => Ok(VAT::AAM),
+            "aam" => Ok(VAT::AAM),
+            "FAD" => Ok(VAT::FAD),
+            "fad" => Ok(VAT::FAD),
+            "TAM" => Ok(VAT::TAM),
+            "tam" => Ok(VAT::TAM),
+            "5" => Ok(VAT::_5),
+            "18" => Ok(VAT::_18),
+            "27" => Ok(VAT::_27),
+            _ => Err("Nem megfelelő Áfa formátum! 5, 18, 27, AAM, TAM, FAD".into()),
+        }
     }
 }
 

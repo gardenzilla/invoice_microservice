@@ -460,7 +460,7 @@ pub struct Item {
     #[serde(rename = "megnevezes")]
     name: String,
     #[serde(rename = "mennyiseg")]
-    quantity: u32,
+    quantity: i32,
     #[serde(rename = "mennyisegiEgyseg")]
     unit: String,
     #[serde(rename = "nettoEgysegar")]
@@ -506,7 +506,7 @@ impl ToString for VAT {
 impl Item {
     pub fn new(
         name: String,
-        quantity: u32,
+        quantity: i32,
         unit: String,
         net_retail_price: i32,
         vat: VAT,

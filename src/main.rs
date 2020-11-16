@@ -7,16 +7,23 @@ mod file;
 mod invoice;
 mod szamlazzhu;
 
-use crate::invoice::InvoiceAgent;
 use chrono::NaiveDate;
+use gzlib::proto;
 use packman::*;
+use proto::invoice::*;
+use std::error::Error;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
+use tokio::sync::oneshot;
+use tonic::{transport::Server, Request, Response, Status};
+
 // use tokio::sync::Mutex;
 
 // How many worker can work together
 // const WORKER_MAX: u32 = 2;
+
+const PDF_FOLDER_NAME: &'static str = "pdf";
 
 struct InvoiceProcessor<T>
 where
@@ -73,7 +80,10 @@ where
                     Ok(bytes) => {
                         match file::save_file(
                             bytes,
-                            std::path::PathBuf::from(format!("pdf/{}.pdf", summary.invoice_id)),
+                            std::path::PathBuf::from(format!(
+                                "data/{}/{}.pdf",
+                                PDF_FOLDER_NAME, summary.invoice_id
+                            )),
                         ) {
                             Ok(_) => (),
                             Err(_) => error!("Invoice PDF SAVE ERROR: {}", summary.invoice_id),
@@ -86,68 +96,249 @@ where
     }
 }
 
-// #[tokio::main]
-// async fn main() {
-//     let invoice_object = invoice::InvoiceObject {
-//         internal_id: 1,
-//         external_id: None,
-//         cart_id: 1,
-//         seller: invoice::Seller::new(),
-//         customer: invoice::Customer::new(
-//             "Demo Elek".into(),
-//             "".into(),
-//             "4551".into(),
-//             "Nyíregyháza".into(),
-//             "Mogyorós utca 36.".into(),
-//         ),
-//         header: invoice::Header::new(
-//             NaiveDate::from_ymd(2020, 11, 13),
-//             NaiveDate::from_ymd(2020, 11, 13),
-//             NaiveDate::from_ymd(2020, 11, 13),
-//             invoice::PaymentMethod::Transfer,
-//         ),
-//         items: vec![
-//             invoice::Item::new(
-//                 "Demo item".into(),
-//                 1,
-//                 "db".into(),
-//                 100,
-//                 invoice::VAT::_27,
-//                 100,
-//                 27,
-//                 127,
-//             )
-//             .unwrap(),
-//             invoice::Item::new(
-//                 "Demo item 2".into(),
-//                 3,
-//                 "db".into(),
-//                 1000,
-//                 invoice::VAT::FAD,
-//                 3000,
-//                 0,
-//                 3000,
-//             )
-//             .unwrap(),
-//         ],
-//         total_net: 3100,
-//         total_gross: 3127,
-//         created_at: chrono::Utc::now(),
-//         created_by: "mezeipetister".into(),
-//     };
-//     let agent = szamlazzhu::SzamlazzHu::new();
-//     let res = agent.create_invoice(invoice_object);
-//     let _res = &res.unwrap();
-//     let bytes = file::base64_decode(&_res.pdf_base64.replace("\n", "")).unwrap();
-//     file::save_file(
-//         bytes,
-//         std::path::PathBuf::from(format!("pdf/{}.pdf", _res.invoice_id)),
-//     )
-//     .unwrap();
-// }
+struct InvoiceService {
+    send_channel: Mutex<mpsc::Sender<invoice::InvoiceObject>>,
+    invoice_store: Arc<Mutex<VecPack<invoice::Invoice>>>,
+    invoice_object_store: Arc<Mutex<VecPack<invoice::InvoiceObject>>>,
+}
 
-fn main() {
+impl InvoiceService {
+    fn new(
+        sender: mpsc::Sender<invoice::InvoiceObject>,
+        invoices: Arc<Mutex<VecPack<invoice::Invoice>>>,
+        invoice_objects: Arc<Mutex<VecPack<invoice::InvoiceObject>>>,
+    ) -> Self {
+        Self {
+            send_channel: Mutex::new(sender),
+            invoice_store: invoices,
+            invoice_object_store: invoice_objects,
+        }
+    }
+}
+
+#[tonic::async_trait]
+impl invoice_server::Invoice for InvoiceService {
+    async fn create_new(
+        &self,
+        request: Request<InvoiceForm>,
+    ) -> Result<Response<NewInvoiceResponse>, Status> {
+        let r = request.into_inner();
+        let next_id = match self.invoice_store.lock() {
+            Ok(invoices) => match invoices.last() {
+                Some(last) => last.unpack().id,
+                None => 1,
+            },
+            Err(_) => panic!("Error while locking invoices"),
+        };
+        let seller = invoice::Seller::new();
+        let c = match r.customer {
+            Some(_customer) => _customer,
+            None => return Err(Status::invalid_argument("No customer object found")),
+        };
+        let customer = invoice::Customer::new(c.name, c.tax_number, c.zip, c.location, c.street);
+
+        let naive_date_parser = |datestr: &str| -> Result<NaiveDate, Status> {
+            match NaiveDate::parse_from_str(datestr, "%Y-%m-%d") {
+                Ok(d) => Ok(d),
+                Err(_) => Err(Status::invalid_argument(
+                    "A megadott dátum nem megfelelő formátumú: YYYY-MM-DD",
+                )),
+            }
+        };
+
+        let header = invoice::Header::new(
+            naive_date_parser(&r.date)?,
+            naive_date_parser(&r.completion_date)?,
+            naive_date_parser(&r.payment_duedate)?,
+            match r.payment_kind.as_str() {
+                "cash" => invoice::PaymentMethod::Cash,
+                "transfer" => invoice::PaymentMethod::Transfer,
+                "card" => invoice::PaymentMethod::Card,
+                _ => {
+                    return Err(Status::invalid_argument(
+                        "A megadott fizetési módszer nem megfelelő: card | cash | transfer",
+                    ))
+                }
+            },
+        );
+
+        let purchase_id = match u32::from_str_radix(&r.purchase_id, 16) {
+            Ok(pid) => pid,
+            Err(_) => {
+                return Err(Status::invalid_argument(
+                    "A megadott kosár ID nem megfelelő! RADIX16 error",
+                ))
+            }
+        };
+
+        let map_item = |i: &invoice_form::Item| -> Result<invoice::Item, Status> {
+            invoice::Item::new(
+                i.name.to_string(),
+                i.quantity,
+                i.unit.to_string(),
+                i.price_unit_net,
+                invoice::VAT::from_str(&i.vat).map_err(|e| Status::invalid_argument(e))?,
+                i.total_price_net,
+                i.total_price_vat,
+                i.total_price_gross,
+            )
+            .map_err(|_| {
+                Status::invalid_argument(
+                    "A megadott tétel ár adatai (nettó, áfa, bruttó) nem helyesek!",
+                )
+            })
+        };
+
+        let items = r
+            .items
+            .iter()
+            .map(map_item)
+            .collect::<Result<Vec<invoice::Item>, Status>>()?;
+
+        let invoice_object = invoice::InvoiceObject::new(
+            next_id,
+            purchase_id,
+            seller,
+            customer,
+            header,
+            items,
+            r.total_net,
+            r.total_gross,
+            r.total_vat,
+            chrono::Utc::now(),
+            r.created_by,
+        );
+
+        self.send_channel
+            .lock()
+            .map_err(|_| Status::internal("Error while locking send_channel"))?
+            .send(invoice_object.clone())
+            .map_err(|_| Status::internal("Error while sending invoice_object via send_channel"))?;
+
+        // Save invoice object to invoice_object_store
+        match self.invoice_object_store.lock() {
+            Ok(mut iobject_store) => {
+                iobject_store.insert(invoice_object.clone()).map_err(|_| {
+                    Status::internal("Error inserting new invoice object to iobject storage")
+                })?;
+            }
+            Err(_) => return Err(Status::internal("Error while locking object_store")),
+        }
+
+        let i: invoice::Invoice = invoice_object.into();
+
+        match self.invoice_store.lock() {
+            Ok(mut invoice_store) => {
+                invoice_store
+                    .insert(i.clone())
+                    .map_err(|_| Status::internal("Error while saving invoice to invoice store"))?;
+            }
+            Err(_) => return Err(Status::internal("Error while locking invoice_store")),
+        }
+
+        Ok(Response::new(NewInvoiceResponse {
+            invoice: Some(InvoiceData {
+                id: format!("{:x}", i.id),
+                purchase_id: format!("{:x}", i.purchase_id),
+                invoice_id: match i.invoice_id {
+                    Some(iid) => iid,
+                    None => "".into(),
+                },
+                related_storno: match i.related_storno {
+                    Some(s) => s,
+                    None => "".into(),
+                },
+                created_by: i.created_by,
+                created_at: i.created_at.clone().to_rfc3339(),
+            }),
+        }))
+    }
+
+    async fn get_by_id(
+        &self,
+        request: Request<ByIdRequest>,
+    ) -> Result<Response<ByIdResponse>, Status> {
+        let id = match u32::from_str_radix(&request.into_inner().id, 16) {
+            Ok(id) => id,
+            Err(_) => return Err(Status::invalid_argument("Bad invoice ID!")),
+        };
+        let i = self
+            .invoice_store
+            .lock()
+            .map_err(|_| Status::internal("Error while locking invoice store"))?
+            .find_id(&id)
+            .map_err(|_| Status::not_found("A megadott számla azonosító nem található"))?
+            .unpack()
+            .clone();
+
+        let u32_to_string = |u| format!("{:x}", u);
+
+        Ok(Response::new(ByIdResponse {
+            invoice: Some(InvoiceData {
+                id: u32_to_string(i.id),
+                purchase_id: u32_to_string(i.purchase_id),
+                invoice_id: i.invoice_id.unwrap_or("".into()),
+                related_storno: i.related_storno.unwrap_or("".into()),
+                created_by: i.created_by,
+                created_at: i.created_at.to_rfc3339(),
+            }),
+        }))
+    }
+
+    async fn get_by_purchase_id(
+        &self,
+        request: Request<PurchaseIdBulkRequest>,
+    ) -> Result<Response<PurchaseIdBulkResponse>, Status> {
+        let id = u32::from_str_radix(&request.into_inner().purchase_id, 16)
+            .map_err(|_| Status::invalid_argument("A megadott ID nem megfelelő formátumú"))?;
+
+        let invoices = self
+            .invoice_store
+            .lock()
+            .map_err(|_| Status::internal("Error locking invoice store"))?
+            .iter()
+            .filter(|i| i.unpack().purchase_id == id)
+            .map(|i| i.unpack().clone())
+            .collect::<Vec<invoice::Invoice>>();
+
+        let mut result: Vec<InvoiceData> = Vec::new();
+
+        let u32_to_string = |u| format!("{:x}", u);
+
+        for i in invoices {
+            result.push(InvoiceData {
+                id: u32_to_string(i.id),
+                purchase_id: u32_to_string(i.purchase_id),
+                invoice_id: i.invoice_id.unwrap_or("".into()),
+                related_storno: i.related_storno.unwrap_or("".into()),
+                created_by: i.created_by,
+                created_at: i.created_at.to_rfc3339(),
+            });
+        }
+
+        Ok(Response::new(PurchaseIdBulkResponse { invoices: result }))
+    }
+
+    async fn download(
+        &self,
+        request: Request<DownloadRequest>,
+    ) -> Result<Response<DownloadResponse>, Status> {
+        let pdf_base64 = file::load_invoice_base64(&request.into_inner().invoice_id)
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(DownloadResponse {
+            pdf_base64: pdf_base64,
+        }))
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     pretty_env_logger::init();
+
+    // Create pdf folder path if not exist
+    std::fs::create_dir_all(format!("data/{}", PDF_FOLDER_NAME))
+        .expect("Error while creating PDF folder path");
 
     // Channels for new invoice requests
     let (new_invoice_sender, new_invoice_rx) = mpsc::channel::<invoice::InvoiceObject>();
@@ -166,14 +357,16 @@ fn main() {
 
     let agent = szamlazzhu::SzamlazzHu::new();
 
-    // Parallel thread for invoice processor
     let invoice_object_store_clone = invoice_object_store.clone();
+    let invoice_store_clone = invoice_store.clone();
+
+    // Parallel thread for invoice processor
     std::thread::spawn(move || {
         // Start invoice processor
         InvoiceProcessor::new(agent).start(
             new_invoice_rx,
             invoice_object_store_clone,
-            invoice_store.clone(),
+            invoice_store_clone,
         )
     });
 
@@ -185,5 +378,37 @@ fn main() {
         Err(_) => error!("Error while locking invoice_object_store!"),
     }
 
-    loop {}
+    let addr = std::env::var("SERVICE_ADDR_INVOICE")
+        .unwrap_or("[::1]:50060".into())
+        .parse()
+        .unwrap();
+
+    // Create shutdown channel
+    let (tx, rx) = oneshot::channel();
+
+    let invoice_service = InvoiceService::new(
+        new_invoice_sender.clone(),
+        invoice_store.clone(),
+        invoice_object_store.clone(),
+    );
+
+    // Spawn the server into a runtime
+    tokio::task::spawn(async move {
+        Server::builder()
+            .add_service(invoice_server::InvoiceServer::new(invoice_service))
+            .serve_with_shutdown(addr, async {
+                let _ = rx.await;
+            })
+            .await
+            .unwrap()
+    });
+
+    tokio::signal::ctrl_c().await?;
+
+    println!("SIGINT");
+
+    // Send shutdown signal after SIGINT received
+    let _ = tx.send(());
+
+    Ok(())
 }
