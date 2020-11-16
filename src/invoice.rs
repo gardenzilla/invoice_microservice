@@ -22,8 +22,9 @@ pub struct InvoiceSummary {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Invoice {
-    id: u32,
-    purchase_id: u32,
+    pub id: u32,
+    pub purchase_id: u32,
+    pub invoice_id: Option<String>,
     related_storno: Option<String>,
     created_by: String,
     created_at: DateTime<Utc>,
@@ -35,6 +36,7 @@ impl Default for Invoice {
         Invoice {
             id: 0,
             purchase_id: 0,
+            invoice_id: None,
             related_storno: None,
             created_by: String::default(),
             created_at: Utc::now(),
@@ -117,6 +119,7 @@ impl From<InvoiceObject> for Invoice {
         Invoice {
             id: i.internal_id,
             purchase_id: i.cart_id,
+            invoice_id: i.external_id,
             related_storno: None,
             created_by: i.created_by,
             created_at: i.created_at,
