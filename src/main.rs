@@ -54,12 +54,6 @@ where
     // Do the processes
     // Infinite loop till the sender is alive
     while let Some(invoice_object) = new_invoice_chan_rx.recv().await {
-      // Clone invoices
-      let invoices = invoices.clone();
-
-      // Clone invoice_objects
-      let invoice_objects = invoice_objects.clone();
-
       let inner_id = invoice_object.internal_id;
 
       match self.agent.lock().await.create_invoice(invoice_object).await {
