@@ -8,7 +8,6 @@ pub enum FileError {
   DecodeError,
   // EncodeError,
   SaveError(String),
-  FileLoadError,
   NotFound,
 }
 
@@ -18,7 +17,6 @@ impl ToString for FileError {
       FileError::DecodeError => "Decode error".into(),
       // FileError::EncodeError => "Encode error".into(),
       FileError::SaveError(e) => format!("Save error {}", e),
-      FileError::FileLoadError => "File load error".into(),
       FileError::NotFound => "A megadott file nem található!".into(),
     }
   }

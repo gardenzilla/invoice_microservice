@@ -4,17 +4,15 @@ extern crate pretty_env_logger;
 extern crate log;
 
 use chrono::{DateTime, NaiveDate, Utc};
-use file::save_file;
 use gzlib::proto::invoice::*;
-use gzlib::proto::{invoice::invoice_server::*, purchase::PaymentKind};
-use invoice::{InvoiceAgent, PaymentMethod};
+use gzlib::proto::purchase::PaymentKind;
+use invoice::PaymentMethod;
 use packman::*;
 use prelude::*;
-use std::error::Error;
 use std::path::PathBuf;
-use std::sync::mpsc;
 use std::sync::Arc;
-use tokio::sync::{oneshot, Mutex};
+use std::{env, error::Error};
+use tokio::sync::{mpsc, oneshot, Mutex};
 use tonic::{transport::Server, Request, Response, Status};
 use uuid::Uuid;
 
@@ -49,13 +47,13 @@ where
   }
   async fn start(
     &mut self,
-    new_invoice_chan_rx: mpsc::Receiver<invoice::InvoiceObject>,
+    mut new_invoice_chan_rx: mpsc::Receiver<invoice::InvoiceObject>,
     invoice_objects: Arc<Mutex<VecPack<invoice::InvoiceObject>>>,
     invoices: Arc<Mutex<VecPack<invoice::Invoice>>>,
   ) {
     // Do the processes
     // Infinite loop till the sender is alive
-    for invoice_object in new_invoice_chan_rx {
+    while let Some(invoice_object) = new_invoice_chan_rx.recv().await {
       // Clone invoices
       let invoices = invoices.clone();
 
@@ -238,6 +236,7 @@ impl InvoiceService {
       .lock()
       .await
       .send(invoice_object.clone())
+      .await
       .map_err(|_| {
         ServiceError::internal_error("Error while sending invoice_object via send_channel")
       })?;
@@ -315,7 +314,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .expect("Error while creating PDF folder path");
 
   // Channels for new invoice requests
-  let (new_invoice_sender, new_invoice_rx) = mpsc::channel::<invoice::InvoiceObject>();
+  let (mut new_invoice_sender, new_invoice_rx) = mpsc::channel::<invoice::InvoiceObject>(100);
 
   // Load Invoice Object Store (New invoice requests)
   let invoice_object_store: Arc<Mutex<VecPack<invoice::InvoiceObject>>> = Arc::new(Mutex::new(
@@ -346,11 +345,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
   });
 
   // Send unprocessed invoice objects to processor
-  invoice_object_store.lock().await.iter().for_each(|i| {
-    let _ = new_invoice_sender.send(i.unpack().clone());
-  });
+  for invoice in invoice_object_store.lock().await.iter() {
+    let _ = new_invoice_sender.send(invoice.unpack().clone()).await;
+  }
 
-  let addr = std::env::var("SERVICE_ADDR_INVOICE")
+  let addr = env::var("SERVICE_ADDR_INVOICE")
     .unwrap_or("[::1]:50060".into())
     .parse()
     .unwrap();
