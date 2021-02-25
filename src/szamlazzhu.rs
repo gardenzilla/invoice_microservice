@@ -1,3 +1,5 @@
+use std::env::temp_dir;
+
 use quick_xml::de::{from_str, DeError};
 use quick_xml::se::to_string;
 use serde::{Deserialize, Serialize};
@@ -254,6 +256,8 @@ pub struct Header {
   is_proform_invoice: bool,
   #[serde(rename = "szamlaszamElotag")]
   invoice_prefix: String,
+  #[serde(rename = "szamlaSablon")]
+  template: String,
 }
 
 pub enum PaymentMethod {
@@ -323,6 +327,7 @@ impl Header {
       corrected_invoce_id: None,
       is_proform_invoice: false,
       invoice_prefix,
+      template: "Szla8cm".to_string(),
     }
   }
 }
