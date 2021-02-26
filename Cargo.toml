@@ -17,7 +17,7 @@ log = "0.4"
 packman = "*"
 pretty_env_logger = "0.3"
 quick-xml = {version = "0.17", features = ["serialize"]}
-reqwest = "*"
+reqwest = "0.10.3"
 serde = {version = "1.0", features = ["derive"]}
 tokio = {version = "0.2", features = ["full"]}
 tonic = "0.3"
