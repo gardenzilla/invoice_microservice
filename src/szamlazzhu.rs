@@ -48,7 +48,7 @@ impl From<crate::invoice::PaymentMethod> for PaymentMethod {
     match m {
       crate::invoice::PaymentMethod::Cash => PaymentMethod::Cash,
       crate::invoice::PaymentMethod::Transfer => PaymentMethod::Transfer,
-      crate::invoice::PaymentMethod::Card => PaymentMethod::CreditCar,
+      crate::invoice::PaymentMethod::Card => PaymentMethod::CreditCard,
     }
   }
 }
@@ -82,7 +82,11 @@ impl crate::invoice::InvoiceAgent for SzamlazzHu {
       data.header.date_created,
       data.header.date_completion,
       data.header.payment_duedate,
-      PaymentMethod::Cash,
+      match data.header.payment_method {
+        crate::invoice::PaymentMethod::Cash => PaymentMethod::Cash,
+        crate::invoice::PaymentMethod::Transfer => PaymentMethod::Transfer,
+        crate::invoice::PaymentMethod::Card => PaymentMethod::CreditCard,
+      },
       None,
       self.invoice_prefix.clone(),
     );
@@ -262,7 +266,7 @@ pub struct Header {
 
 pub enum PaymentMethod {
   Cash,
-  CreditCar,
+  CreditCard,
   Transfer,
 }
 
@@ -270,7 +274,7 @@ impl PaymentMethod {
   fn to_string(&self) -> String {
     match self {
       PaymentMethod::Cash => String::from("Készpénz"),
-      PaymentMethod::CreditCar => String::from("Bankkártya"),
+      PaymentMethod::CreditCard => String::from("Bankkártya"),
       PaymentMethod::Transfer => String::from("Átutalás"),
     }
   }
