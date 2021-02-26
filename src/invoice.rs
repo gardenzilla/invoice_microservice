@@ -250,7 +250,7 @@ impl Item {
     if (quantity * retail_price_net) != total_price_net {
       return Err(ItemError::TotalUnitNetError);
     }
-    if (quantity * retail_price_net * vat.clone()) != total_price_gross {
+    if (quantity * (retail_price_net * vat.clone())) != total_price_gross {
       return Err(ItemError::TotalUnitGrossError);
     }
     if (total_price_net + total_price_vat) != total_price_gross {
