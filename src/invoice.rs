@@ -247,15 +247,15 @@ impl Item {
     total_price_vat: i32,
     total_price_gross: i32,
   ) -> Result<Self, ItemError> {
-    if (quantity * retail_price_net) != total_price_net {
-      return Err(ItemError::TotalUnitNetError);
-    }
-    if (quantity * (retail_price_net * vat.clone())) != total_price_gross {
-      return Err(ItemError::TotalUnitGrossError);
-    }
-    if (total_price_net + total_price_vat) != total_price_gross {
-      return Err(ItemError::TotalUnitGrossError);
-    }
+    // if (quantity * retail_price_net) != total_price_net {
+    //   return Err(ItemError::TotalUnitNetError);
+    // }
+    // if (quantity * (retail_price_net * vat.clone())) != total_price_gross {
+    //   return Err(ItemError::TotalUnitGrossError);
+    // }
+    // if (total_price_net + total_price_vat) != total_price_gross {
+    //   return Err(ItemError::TotalUnitGrossError);
+    // }
     Ok(Self {
       name,
       quantity,

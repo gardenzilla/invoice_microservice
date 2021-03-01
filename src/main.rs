@@ -187,7 +187,10 @@ impl InvoiceService {
         i.total_price_gross,
       )
       .map_err(|_| {
-        ServiceError::bad_request("A megadott tétel ár adatai (nettó, áfa, bruttó) nem helyesek!")
+        ServiceError::bad_request(&format!(
+          "A megadott tétel ár adatai (nettó, áfa, bruttó) nem helyesek! {:?}",
+          i
+        ))
       })
     };
 
