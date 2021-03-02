@@ -4,8 +4,10 @@ extern crate pretty_env_logger;
 extern crate log;
 
 use chrono::{DateTime, NaiveDate, Utc};
-use gzlib::proto::invoice::*;
-use gzlib::proto::purchase::PaymentKind;
+use gzlib::proto::invoice::{
+  invoice_form::{self, PaymentKind},
+  *,
+};
 use invoice::PaymentMethod;
 use packman::*;
 use prelude::*;
@@ -163,6 +165,8 @@ impl InvoiceService {
 
     let payment_kind: PaymentKind = PaymentKind::from_i32(r.payment_kind)
       .ok_or(ServiceError::internal_error("Wrong paymentkind ENUM!"))?;
+
+    println!("payment kind is {:?} - {}", &payment_kind, &r.payment_kind);
 
     let header = invoice::Header::new(
       date_parser(&r.date)?,
