@@ -216,7 +216,7 @@ impl Settings {
       agent_key,
       is_einvoice: false,
       should_download_pdf: true,
-      copy_of_pdf_pages: 1,
+      copy_of_pdf_pages: 2,
       response_version: 2,
       agregator: None,
     }
