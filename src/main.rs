@@ -238,8 +238,11 @@ impl InvoiceService {
       .await
       .send(invoice_object.clone())
       .await
-      .map_err(|_| {
-        ServiceError::internal_error("Error while sending invoice_object via send_channel")
+      .map_err(|e| {
+        ServiceError::internal_error(&format!(
+          "Error while sending invoice_object via send_channel; {:?}",
+          e
+        ))
       })?;
 
     let i: invoice::Invoice = invoice_object.into();
@@ -334,7 +337,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
   let invoice_store_clone = invoice_store.clone();
 
   // Parallel thread for invoice processor
-  tokio::task::spawn(async move {
+  tokio::spawn(async move {
     // Start invoice processor
     InvoiceProcessor::new(agent)
       .start(

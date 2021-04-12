@@ -119,9 +119,12 @@ impl crate::invoice::InvoiceAgent for SzamlazzHu {
       .form(&[("action-xmlagentxmlfile", r.as_str())])
       .send()
       .await
-      .map_err(|e| crate::invoice::AgentError::DataError(e.to_string()))?;
+      .map_err(|e| {
+        println!("{:?}", e);
+        crate::invoice::AgentError::DataError(e.to_string())
+      });
 
-    let text = response
+    let text = response?
       .text()
       .await
       .map_err(|e| crate::invoice::AgentError::DataError(e.to_string()))?;

@@ -1,8 +1,7 @@
-use async_fs::File;
-use futures_lite::io::AsyncWriteExt;
-use tokio::task::spawn_blocking;
-// use std::io::prelude::*;
-use std::{io::Read, path::PathBuf};
+use std::path::PathBuf;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 
 #[derive(Debug)]
 pub enum FileError {
@@ -55,20 +54,17 @@ pub async fn save_file(bytes: Vec<u8>, path: PathBuf) -> Result<(), FileError> {
 
 pub async fn load_invoice_base64(id: &str) -> Result<String, FileError> {
   let id = id.to_owned();
-  let content = spawn_blocking(move || -> Result<Vec<u8>, FileError> {
-    let mut file = std::fs::File::open(format!("data/{}/{}.pdf", crate::PDF_FOLDER_NAME, id))
-      .map_err(|_| FileError::NotFound)?;
 
-    let mut file_buf: Vec<u8> = Vec::new();
+  let mut file = File::open(format!("data/{}/{}.pdf", crate::PDF_FOLDER_NAME, id))
+    .await
+    .map_err(|_| FileError::NotFound)?;
 
-    file
-      .read_to_end(&mut file_buf)
-      .map_err(|_| FileError::DecodeError)?;
+  let mut file_buf: Vec<u8> = Vec::new();
 
-    Ok(file_buf)
-  })
-  .await
-  .map_err(|_| FileError::NotFound)??;
+  file
+    .read_to_end(&mut file_buf)
+    .await
+    .map_err(|_| FileError::DecodeError)?;
 
-  Ok(base64_encode(&content))
+  Ok(base64_encode(&file_buf))
 }
