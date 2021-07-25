@@ -1,4 +1,4 @@
-FROM fedora:33
+FROM fedora:34
 RUN dnf update -y && dnf clean all -y
 RUN dnf install curl -y && dnf clean all -y
 WORKDIR /usr/local/bin
